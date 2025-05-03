@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import bcrypt
 
 # Create an SQLite database
 conn = sqlite3.connect("students.db")
@@ -30,9 +31,26 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS users (
                     password TEXT
                 )''')
 
+# Function to hash passwords
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
 # Add a default username and password (note that this is just an example)
-cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "password"))
-conn.commit()
+default_username = os.getenv("DEFAULT_USERNAME", "admin")
+default_password = os.getenv("DEFAULT_PASSWORD", "password")
+
+# Check if the default user already exists
+cursor.execute("SELECT * FROM users WHERE username = ?", (default_username,))
+user = cursor.fetchone()
+
+if not user:
+    # Hash the default password
+    hashed_password = hash_password(default_password)
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (default_username, hashed_password))
+    conn.commit()
+    print(f"Default user '{default_username}' added to the database.")
+else:
+    print(f"Default user '{default_username}' already exists in the database.")
 
 # Create a directory for storing images
 if not os.path.exists("images"):
@@ -43,11 +61,11 @@ def login():
     while True:
         username = input("Enter username: ")
         password = input("Enter password: ")
-        
-        cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
         user = cursor.fetchone()
-        
-        if user:
+
+        if user and bcrypt.checkpw(password.encode('utf-8'), user[2]):
             print("Login successful.")
             break
         else:
@@ -59,14 +77,14 @@ def add_student():
     name = input("Enter student name: ")
     contact = input("Enter student contact information: ")
     ssn = input("Enter student SSN: ")
-    
+
     image_path = input("Enter the image file name (e.g., student_card.png, press Enter to skip): ")
     if image_path:
         image_path = os.path.join("images", image_path)
         if not os.path.exists(image_path):
             print("Image file not found. Student added without an image.")
             image_path = None
-    
+
     cursor.execute("INSERT INTO students (student_number, name, contact, ssn, image_path) VALUES (?, ?, ?, ?, ?)",
                (student_number, name, contact, ssn, image_path))
     conn.commit()
@@ -77,10 +95,10 @@ def add_grades():
     student_number = input("Enter the student number of the student to add grades for: ")
     course = input("Enter course name: ")
     grade = input("Enter the grade: ")
-    
+
     cursor.execute("SELECT student_number FROM students WHERE student_number = ?", (student_number,))
     student_id = cursor.fetchone()
-    
+
     if student_id:
         cursor.execute("INSERT INTO grades (student_id, course, grade) VALUES (?, ?, ?)",
                        (student_number, course, grade))
@@ -92,10 +110,10 @@ def add_grades():
 # Function to search for a student by student number
 def search_student():
     student_number = input("Enter the student number of the student to search for: ")
-    
+
     cursor.execute("SELECT * FROM students WHERE student_number = ?", (student_number,))
     student = cursor.fetchone()
-    
+
     if student:
         print("Student found:")
         print(f"Student Number: {student[0]}")
@@ -110,7 +128,7 @@ def search_student():
 def display_all_students():
     cursor.execute("SELECT * FROM students")
     students = cursor.fetchall()
-    
+
     if students:
         print("All students:")
         for student in students:
@@ -127,9 +145,9 @@ def display_all_students():
 def upload_image():
     student_number = input("Enter the student number (image will be associated with this student): ")
     image_file = input("Enter the image file name (e.g., student_card.png): ")
-    
+
     image_path = os.path.join("images", image_file)
-    
+
     if os.path.exists(image_path):
         cursor.execute("UPDATE students SET image_path = ? WHERE student_number = ?", (image_path, student_number))
         conn.commit()
@@ -140,10 +158,10 @@ def upload_image():
 # Function to download a student's image
 def download_student_image():
     student_number = input("Enter the student number of the student whose image you want to download: ")
-    
+
     cursor.execute("SELECT image_path FROM students WHERE student_number = ?", (student_number,))
     image_path = cursor.fetchone()
-    
+
     if image_path:
         image_path = image_path[0]
         if os.path.exists(image_path):
@@ -170,9 +188,9 @@ def main():
         print("5. Upload an image for a student")
         print("6. Download a student's image")
         print("7. Exit")
-        
+
         choice = input("Enter your choice (1/2/3/4/5/6/7): ")
-        
+
         if choice == "1":
             add_student()
         elif choice == "2":
